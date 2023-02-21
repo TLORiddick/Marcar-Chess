@@ -1,0 +1,19 @@
+$(eval
+  // Obtiene el comando ingresado por el espectador
+  var command = "$(query)";
+
+  // Valida que el comando sea una jugada válida de ajedrez
+  var regex = /^[a-h][1-8]$/;
+  if (!regex.test(command)) {
+    "Comando inválido. Por favor, introduce una jugada válida de ajedrez.";
+  } else {
+    // Realiza la jugada en Chess.com
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "https://www.chess.com/callback/live/play", true);
+    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+    xhr.send("move=" + command + "&pgn=" + chessBoard.pgn() + "&isOTB=0&timeLeft=" + JSON.stringify(chessClocks) + "&gameid=" + GAME_ID + "&player=" + PLAYER_COLOR + "&checkChatLimits=1");
+
+    // Muestra un mensaje en el chat indicando que se ha realizado la jugada
+    `@$(user) ha marcado la casilla ${command}.`;
+  }
+)
