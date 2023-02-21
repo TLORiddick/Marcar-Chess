@@ -1,19 +1,364 @@
-$(eval
-  // Obtiene el comando ingresado por el espectador
-  var command = "$(query)";
 
-  // Valida que el comando sea una jugada válida de ajedrez
-  var regex = /^[a-h][1-8]$/;
-  if (!regex.test(command)) {
-    "Comando inválido. Por favor, introduce una jugada válida de ajedrez.";
-  } else {
-    // Realiza la jugada en Chess.com
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", "https://www.chess.com/callback/live/play", true);
-    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-    xhr.send("move=" + command + "&pgn=" + chessBoard.pgn() + "&isOTB=0&timeLeft=" + JSON.stringify(chessClocks) + "&gameid=70725659855&player=White" "&checkChatLimits=1");
+// See https://aka.ms/new-console-template for more information
 
-    // Muestra un mensaje en el chat indicando que se ha realizado la jugada
-    `@$(user) ha marcado la casilla ${command}.`;
-  }
-)
+using System.Data.SqlTypes;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Text;
+using System.Transactions;
+using WinSCP;
+using static System.Net.Mime.MediaTypeNames;
+
+static class Program
+{
+
+    public static string rutalocalEEG = @"W:\EEG\";
+    public static string rCENTRE = "192.168.29.161";
+    public static string rEncamp = "192.168.29.162";
+    public static string rFresh = "192.168.29.164";
+    public static string rIlla = "192.168.29.163";
+
+    public static string rutasubidaBasculas = "\\\\srvbizerba\\Bizerba\\balanzas\\to bizerba";
+    public static string ToCentre = rutasubidaBasculas + "\\Centre\\Balanzas\\";
+    public static string ToCentreETQ = rutasubidaBasculas + "\\Centre\\Etiquetadores\\";
+    public static string ToEncamp = rutasubidaBasculas + "\\Encamp\\Balanzas\\";
+    public static string ToFresh = rutasubidaBasculas + "\\Fresh\\Balanzas\\";
+    public static string ToIlla = rutasubidaBasculas + "\\Illa\\Balanzas\\";
+    public static string ToMassana = rutasubidaBasculas + "\\Massana\\Balanzas\\";
+
+    public static string rutalocalBasculas = @"W:\BALANZA\";
+    public static bool msgerrorBal = false;
+    public static bool msgerrorEEG = false;
+    static void Main()
+    {
+        //try
+        //{
+            Timer t1 = new Timer(FileBalance, null, 0, 10000);
+            Timer t2 = new Timer(FileEEG, null, 5000, 10000);
+            Timer t3 = new Timer(Clock, null, 1000, 1000);
+
+            Console.Title = "Enviament EEG i Balances";
+            Console.WriteLine("Executant importacions/exportacions de Balances i EEGs");
+            Console.WriteLine();
+            Console.WriteLine();
+            Console.Read();
+        //}
+        //catch (Exception ex)
+        //{
+        //    Console.WriteLine(ex.Message);
+        //    Console.Read();
+        //    throw;
+        //}
+    }
+    public static void Clock(Object o)
+    {
+        switch (clock)
+        {
+            case 0:
+                Console.SetCursorPosition(0, Console.CursorTop -1);
+                Console.WriteLine(new string('░', 5));
+                clock++;
+                break;
+            case 1:
+                Console.SetCursorPosition(0, Console.CursorTop - 1);
+                Console.WriteLine(new string('▒', 5));
+                clock++;
+                break;
+            case 2:
+                Console.SetCursorPosition(0, Console.CursorTop - 1);
+                Console.WriteLine(new string('▓', 5));
+                clock++;
+                break;
+            case 3:
+                Console.SetCursorPosition(0, Console.CursorTop - 1);
+                Console.WriteLine(new string('█', 5));
+                clock = 0;
+                break;
+        }
+    }
+    public static int clock = 0;
+    static void SendBalancesfiles(string fromDynamics, string toBalance, string toCopy, string BussinessName)
+    {
+        
+        //##### Comprobando si existen archivos para subir #####
+        Console.ForegroundColor = ConsoleColor.White;
+        string Message = string.Empty;
+        string fileContains = "enviar_";
+        try
+        {
+
+        }
+        catch (Exception)
+        {
+
+            throw;
+        }
+        string[] files = Directory.GetFiles(fromDynamics); 
+        string getNumFile = null;
+        if (files.Count() != 0)
+        {
+            if (Directory.GetFiles(toBalance).Count() < 3)
+            {                
+                foreach (string file in Directory.GetFiles(toBalance))
+                {
+                    Thread.Sleep(10000);
+                    try
+                    {
+                        File.Delete(file);
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.SetCursorPosition(0, Console.CursorTop -1);
+                        Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - S'ha eliminat residus de fitxers de balances en " + BussinessName);
+                        Console.WriteLine();
+                        Console.ForegroundColor = ConsoleColor.White;
+                    }
+                    catch (Exception)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.SetCursorPosition(0, Console.CursorTop -1);
+                        Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - S'ha intentat esborrar fitxers \"sueltos\" de la balança de " + BussinessName + " sense exit");
+                        Console.WriteLine();
+                        Console.ForegroundColor = ConsoleColor.White;
+                    }
+                }
+            }
+            foreach (string file in files)
+            {
+                if (Path.GetFileNameWithoutExtension(file).StartsWith(fileContains))
+                {
+                    getNumFile = Path.GetFileNameWithoutExtension(file).Split('_')[1];
+                    break;
+                }
+            }
+            //##### Si existen articulos, comprueba que esten los 3 generados, los copia y los pega al servidor srvbizerba
+            if (getNumFile != null)
+            {
+                string[] filestosend = Array.FindAll(files, x => x.Contains(getNumFile));
+                if (Directory.GetFiles(toBalance).Count() == 0)
+                {
+                    if (filestosend.Count() == 3)
+                    {
+                        string datesent = DateTime.Now.ToString("yyyyMMddHHmm");
+                        foreach (string file in filestosend)
+                        {
+                            try
+                            {
+                                File.Copy(file, toCopy + Path.GetFileNameWithoutExtension(file) + "_" + datesent + ".txt", true);
+                            }
+                            catch (Exception e )
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.SetCursorPosition(0, Console.CursorTop - 1);
+                                Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - No s'ha pogut enviar " + getNumFile + " a les balances de " + BussinessName + ". Es tornará a intentar en 10 segons...");
+                                Console.WriteLine(e.Message);
+                                Console.WriteLine();
+                                Console.ForegroundColor = ConsoleColor.White;
+                            }
+                            
+                        }
+                        foreach (string file in filestosend)
+                        {
+                            try
+                            {
+                                File.Move(file, toBalance + Path.GetFileName(file), true);
+                            }
+                            catch (Exception)
+                            {
+
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.SetCursorPosition(0, Console.CursorTop - 1);
+                                Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - No s'ha pogut enviar " + getNumFile + " a les balances de " + BussinessName + ". Es tornará a intentar en 10 segons...");
+                                Console.WriteLine(); 
+                                Console.ForegroundColor = ConsoleColor.White;
+                            }
+                            
+                        }
+                        Console.SetCursorPosition(0, Console.CursorTop - 1);
+                        Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - S'ha Enviat a Balança " + BussinessName + " els arxius amb numeració " + getNumFile + "_" + datesent);
+                        Console.WriteLine(); 
+                        msgerrorBal = false;
+                    }
+                    else if (filestosend.Count() >= 1 & filestosend.Count() < 3)
+                    {
+                        if (!msgerrorBal)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.SetCursorPosition(0, Console.CursorTop - 1);
+                            Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - Manca un arxiu dels 3 necessaris per enviar a balances amb la numeracio " + getNumFile + " a " + BussinessName);
+                            Console.WriteLine(); 
+                            msgerrorBal = true;
+                            Console.ForegroundColor = ConsoleColor.White;
+                        }
+                    }
+                    else if (filestosend.Count() > 3)
+                    {
+                        if (!msgerrorBal)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.SetCursorPosition(0, Console.CursorTop - 1);
+                            Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - Hi han 4 o mes arxius amb la mateixa numeració " + getNumFile + " i no es podran enviar a " + BussinessName);
+                            Console.WriteLine(); 
+                            msgerrorBal = true;
+                            Console.ForegroundColor = ConsoleColor.White;
+                        }
+                    }
+                }                
+            }
+        }
+    }
+    static void SendEEGfiles(string fromDynamics, string toEEG, string toCopy, /*string toANSIfolder,*/ string BussinessName)
+    {
+        Console.ForegroundColor = ConsoleColor.White;
+        string[] filesEEG = Directory.GetFiles(fromDynamics, "*.eeg");
+        string[] filesFLG = Directory.GetFiles(fromDynamics, "*.flg");
+        string fileEEGToSend = string.Empty;
+        string fileFLGToSend = string.Empty;
+        string filenameToSend = string.Empty;
+        if (filesEEG.Count() > 0)
+        {
+            filenameToSend = Path.GetFileNameWithoutExtension(filesEEG[0]);
+            if (!string.IsNullOrEmpty(filenameToSend))
+            {
+                fileEEGToSend = Array.Find(filesEEG, file => file.Contains(filenameToSend));
+            }
+        }
+        if (filesFLG.Count() > 0)
+        {
+            if (!string.IsNullOrEmpty(filenameToSend))
+            {
+                fileFLGToSend = Array.Find(filesFLG, file => file.Contains(filenameToSend));
+            }
+        }
+
+        if (!string.IsNullOrEmpty(fileEEGToSend) & !string.IsNullOrEmpty(fileFLGToSend))
+        {
+            SessionOptions sessionOptions = new SessionOptions
+            {
+                Protocol = Protocol.Ftp,
+                HostName = toEEG,
+                UserName = "import",
+                Password = "import",
+            };
+
+            using (Session session = new Session())
+            {
+                session.Open(sessionOptions);
+
+
+
+                List<string> remoteFile = session.EnumerateRemoteFiles("/", "*.eeg", WinSCP.EnumerationOptions.None).Select(fileinfo => fileinfo.FullName).ToList();
+                if (remoteFile.Count() == 0)
+                {
+                    remoteFile = session.EnumerateRemoteFiles("/", "*.flg", WinSCP.EnumerationOptions.None).Select(fileinfo => fileinfo.FullName).ToList();
+                    if (remoteFile.Count() == 0)
+                    {
+                        try
+                        {
+                            //StreamReader sr = new StreamReader(fileEEGToSend);
+                            //StreamWriter sw = new StreamWriter(toANSIfolder + Path.GetFileName(fileEEGToSend), false, Encoding.Latin1);
+                            //sw.WriteLine(sr.ReadToEnd());
+                            //sr.Close();
+                            //sw.Close();
+                            //sr = new StreamReader(fileFLGToSend);
+                            //sw = new StreamWriter(toANSIfolder + Path.GetFileName(fileFLGToSend), false, Encoding.Latin1);
+                            //sw.WriteLine(sr.ReadToEnd());
+                            //sr.Close();
+                            //sw.Close();
+                            session.PutFiles(/*toANSIfolder + Path.GetFileName(*/fileEEGToSend/*)*/, "/");
+                            session.PutFiles(/*toANSIfolder + Path.GetFileName(*/fileFLGToSend/*)*/, "/");
+                            File.Move(fileEEGToSend, toCopy + Path.GetFileNameWithoutExtension(fileEEGToSend) + ".eeg.old", true);
+                            File.Move(fileFLGToSend, toCopy + Path.GetFileNameWithoutExtension(fileFLGToSend) + ".flg.old", true);
+                            //File.Delete(toANSIfolder + Path.GetFileName(fileEEGToSend));
+                            //File.Delete(toANSIfolder + Path.GetFileName(fileFLGToSend));
+                            Console.SetCursorPosition(0, Console.CursorTop - 1);
+                            Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - S'ha enviat els arxius " + Path.GetFileNameWithoutExtension(fileEEGToSend) + " d'etiquetes al negoci " + BussinessName + ".");
+                            Console.WriteLine(); 
+                            msgerrorBal = true;
+                        }
+                        catch (Exception e)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.SetCursorPosition(0, Console.CursorTop - 1);
+                            Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - Error copiant els arxius " + Path.GetFileNameWithoutExtension(fileEEGToSend) + " d'etiquetes al " + BussinessName + ".");
+                            Console.WriteLine(e.Message.ToString());
+                            Console.WriteLine(); 
+                            msgerrorBal = false;
+                            Console.ForegroundColor = ConsoleColor.White;
+                        }                        
+                    }
+                    else
+                    {
+                        if (!msgerrorBal)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.SetCursorPosition(0, Console.CursorTop - 1);
+                            Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - Hi ha un arxiu EEG sense FLG al FTP de " + BussinessName + ".");
+                            Console.WriteLine(); 
+                            msgerrorBal = false;
+                            Console.ForegroundColor = ConsoleColor.White;
+                        }
+                        //session.RemoveFile("*.eeg");
+                    }
+                }
+                else
+                {
+                    remoteFile = session.EnumerateRemoteFiles("/", "*.flg", WinSCP.EnumerationOptions.None).Select(fileinfo => fileinfo.FullName).ToList();
+                    if (remoteFile.Count() == 0)
+                    {
+                        if (!msgerrorBal)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.SetCursorPosition(0, Console.CursorTop - 1);
+                            Console.WriteLine("[" + DateTime.Now.ToString("dd/MM/yyyy HH:mm") + "] - Hi ha un arxiu *.FLG sense *.EEG al FTP de " + BussinessName + ".");
+                            Console.WriteLine(); 
+                            msgerrorBal = false;
+                            Console.ForegroundColor = ConsoleColor.White;
+                        }
+                        //session.GetFile("*.eeg");
+                        //session.RemoveFile("*.eeg");
+                    }
+                }
+                session.Close();
+            }
+        }
+    }
+    static void FileBalance(Object o)
+    {
+        try
+        {
+            SendBalancesfiles(rutalocalBasculas + "Centre", ToCentre, rutalocalBasculas + "SentCentre\\", "Centre");
+            SendBalancesfiles(rutalocalBasculas + "Centre\\Etiquetadora", ToCentreETQ, rutalocalBasculas + "SentEtiquetadores\\", "Etiquetadores");
+            SendBalancesfiles(rutalocalBasculas + "Encamp", ToEncamp, rutalocalBasculas + "SentEncamp\\", "Encamp");
+            SendBalancesfiles(rutalocalBasculas + "Fresh", ToFresh, rutalocalBasculas + "SentFresh\\", "Fresh");
+            SendBalancesfiles(rutalocalBasculas + "Illa", ToIlla, rutalocalBasculas + "SentIlla\\", "Illa");
+            SendBalancesfiles(rutalocalBasculas + "Massana", ToMassana, rutalocalBasculas + "SentMassana\\", "Massana");
+
+        }
+        catch (Exception ex)
+        {
+
+            using (StreamWriter SW = new StreamWriter(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + "\\Error_Balances.txt", true))
+            {
+                SW.WriteLine("[" + DateTime.Now.ToString(@"dd/MM/yyyy hh:mm") + "]: " + ex.Message);
+            }
+        }        
+    }
+    static void FileEEG(Object o)
+    {
+        try
+        {
+            SendEEGfiles(rutalocalEEG + "Centre", rCENTRE, rutalocalEEG + "SentCentre\\", /*rutalocalEEG + "UTF8_To_ANSI\\Centre\\",*/ "Centre");
+            SendEEGfiles(rutalocalEEG + "Encamp", rEncamp, rutalocalEEG + "SentEncamp\\", /*rutalocalEEG + "UTF8_To_ANSI\\Encamp\\",*/ "Encamp");
+            SendEEGfiles(rutalocalEEG + "Fresh", rFresh, rutalocalEEG + "SentFresh\\", /*rutalocalEEG + "UTF8_To_ANSI\\Fresh\\",*/ "Fresh");
+            SendEEGfiles(rutalocalEEG + "Illa", rIlla, rutalocalEEG + "SentIlla\\", /*rutalocalEEG + "UTF8_To_ANSI\\Illa\\",*/ "Illa");
+        }
+        catch (Exception ex)
+        {
+            using (StreamWriter SW = new StreamWriter(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + "\\Error_Etiquetes.txt", true))
+            {
+                SW.WriteLine("[" + DateTime.Now.ToString(@"dd/MM/yyyy hh:mm") + "]: " + ex.Message);
+            }
+        }
+        
+    }
+}
